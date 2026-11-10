@@ -1,0 +1,29 @@
+{
+  "name": "domma-connect-lead",
+  "version": "1.0.0",
+  "description": "Domma Connect Lead — disparo de WhatsApp a partir de planilhas, com IA",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.5.0",
+    "pino": "^10.4.0",
+    "qrcode": "^1.5.4",
+    "xlsx": "^0.18.5"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  }
+}
