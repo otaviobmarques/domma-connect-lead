@@ -1,16 +1,12 @@
 // IA que personaliza cada mensagem (Claude, ChatGPT ou Gemini)
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import { DATA_DIR } from './db.js';
+import { localSecret } from './secrets.js';
 import { businessContext } from './settings.js';
 
 // ---- chave de API guardada criptografada
-const keyFile = path.join(DATA_DIR, '.enc-key');
 const ENC_KEY = process.env.ENCRYPTION_KEY
   ? crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY).digest()
-  : (fs.existsSync(keyFile) ? Buffer.from(fs.readFileSync(keyFile, 'utf8'), 'hex')
-    : (() => { const k = crypto.randomBytes(32); fs.writeFileSync(keyFile, k.toString('hex')); return k; })());
+  : Buffer.from(localSecret('.enc-key', 32), 'hex');
 
 export function encrypt(text) {
   if (!text) return null;

@@ -1,8 +1,6 @@
 // Configurações do administrador (por empresa)
 import { db, parseJSON } from './db.js';
 
-try { db.exec("ALTER TABLE workspaces ADD COLUMN settings_json TEXT NOT NULL DEFAULT '{}'"); } catch { /* já existe */ }
-
 export const DEFAULT_SETTINGS = {
   perfil: { nome: '', segmento: '', cidade: '', site: '', telefone: '', instagram: '', descricao: '', logo: null },
   playbook: {
@@ -31,16 +29,15 @@ function merge(base, over) {
   return out;
 }
 
-export function getSettings(wsOrId) {
-  const ws = typeof wsOrId === 'object' ? wsOrId : db.prepare('SELECT * FROM workspaces WHERE id=?').get(wsOrId);
+export async function getSettings(wsOrId) {
+  const ws = typeof wsOrId === 'object' ? wsOrId : await db.get('SELECT * FROM workspaces WHERE id=?', [wsOrId]);
   const s = merge(DEFAULT_SETTINGS, parseJSON(ws?.settings_json, {}));
   if (!s.perfil.nome) s.perfil.nome = ws?.name || '';
   return s;
 }
 
-export function saveSettings(wsId, settings) {
-  db.prepare('UPDATE workspaces SET settings_json=? WHERE id=?').run(JSON.stringify(settings), wsId);
-  if (settings.perfil?.nome) db.prepare('UPDATE workspaces SET name=? WHERE id=?').run(settings.perfil.nome, wsId);
+export async function saveSettings(wsId, settings) {
+  await db.run('UPDATE workspaces SET settings_json=?, name=COALESCE(NULLIF(?, \'\'), name) WHERE id=?', [JSON.stringify(settings), settings.perfil?.nome || '', wsId]);
 }
 
 /** Texto que a IA recebe como contexto do negócio */

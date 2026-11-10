@@ -29,6 +29,21 @@ async function api(path, opts = {}) {
   if (!r.ok) throw new Error(j.error || 'Algo deu errado');
   return j;
 }
+// envia arquivos em pedaços de 3 MB (limite de 4,5 MB por requisição na Vercel)
+async function uploadFile(f, { temp = false, onProgress } = {}) {
+  const meta = await api('/api/files', { body: { name: f.name, mime: f.type || 'application/octet-stream', size: f.size, temp } });
+  for (let i = 0; i < meta.chunks; i++) {
+    const part = f.slice(i * meta.chunk_size, (i + 1) * meta.chunk_size);
+    const r = await fetch(`/api/files/${meta.id}/chunk/${i}`, { method: 'PUT', headers: { 'Content-Type': 'application/octet-stream' }, body: part });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Falha ao enviar o arquivo');
+    onProgress && onProgress((i + 1) / meta.chunks);
+  }
+  return api(`/api/files/${meta.id}/complete`, { method: 'POST' });
+}
+const IN_DESKTOP = /DommaConnectLead/.test(navigator.userAgent);
+// painel aberto: faz a fila andar para a API Oficial e a conexão de teste
+setInterval(() => { if (me && document.visibilityState === 'visible') fetch('/api/queue/tick', { method: 'POST' }).catch(() => {}); }, 4000);
+
 function toast(msg, err) {
   const t = document.createElement('div');
   t.className = 'toast' + (err ? ' err' : '');
@@ -101,7 +116,7 @@ function ring(key, pctNow, status, size = 190) {
 let me = null;
 const NAV = [
   ['#/', '🏠', 'Início'], ['#/campanhas', '📣', 'Campanhas'], ['#/listas', '📋', 'Listas de contatos'],
-  ['#/conexoes', '🔌', 'Conexões'], ['#/descadastrados', '🚫', 'Descadastrados'], ['#/admin', '🛠️', 'Administrador'],
+  ['#/conexoes', '🔌', 'Conexões'], ['#/descadastrados', '🚫', 'Descadastrados'], ['#/app', '💻', 'App para PC'], ['#/admin', '🛠️', 'Administrador'],
 ];
 function shell() {
   const h = location.hash || '#/';
@@ -126,7 +141,7 @@ const routes = [
   [/^#\/login$/, pageLogin, true], [/^#\/cadastro$/, pageRegister, true],
   [/^#\/?$/, pageHome], [/^#\/nova$/, pageWizard], [/^#\/campanhas$/, pageCampaigns], [/^#\/campanhas\/(\d+)$/, pageCampaign],
   [/^#\/listas$/, pageLists], [/^#\/listas\/(\d+)$/, pageList], [/^#\/conexoes$/, pageConnections],
-  [/^#\/descadastrados$/, pageOptouts], [/^#\/(admin|config)(?:\/(\w+))?$/, pageAdmin],
+  [/^#\/descadastrados$/, pageOptouts], [/^#\/app$/, pageDesktop], [/^#\/(admin|config)(?:\/(\w+))?$/, pageAdmin],
 ];
 async function router() {
   clearTimers();
@@ -292,9 +307,11 @@ function wStep1(body, el) {
     const drop = $('#drop'), file = $('#file');
     const send = safe(async f => {
       $('#upmsg').innerHTML = '<div class="row" style="margin-top:16px"><div class="spin"></div><span>Lendo a planilha e arrumando os telefones…</span></div>';
-      const fd = new FormData(); fd.append('file', f);
-      const ddd = $('#ddd').value.replace(/\D/g, ''); if (ddd) fd.append('defaultDDD', ddd);
-      try { W.list = await api('/api/lists/import', { body: fd }); } finally { $('#upmsg') && ($('#upmsg').innerHTML = ''); }
+      const ddd = $('#ddd').value.replace(/\D/g, '');
+      try {
+        const up = await uploadFile(f, { temp: true });
+        W.list = await api('/api/lists/import', { body: { file: up.file, defaultDDD: ddd || null } });
+      } finally { $('#upmsg') && ($('#upmsg').innerHTML = ''); }
       renderWizard(el);
     });
     file.onchange = () => file.files[0] && send(file.files[0]);
@@ -417,9 +434,8 @@ function renderTextArea() {
   }));
   $('#mediaFile').onchange = safe(async e => {
     const f = e.target.files[0]; if (!f) return;
-    const fd = new FormData(); fd.append('file', f);
     $('#mediaBox').innerHTML = '<span class="muted">Enviando…</span>';
-    const m = await api('/api/media', { body: fd });
+    const m = await uploadFile(f);
     W.media = { ...m, localUrl: URL.createObjectURL(f) };
     renderTextArea(); updatePreview();
   });
@@ -482,8 +498,7 @@ async function renderTemplateArea() {
   bind('h', (i, v) => { W.tplParams.header = { type: 'text', value: v }; });
   $('#hdrFile') && ($('#hdrFile').onchange = safe(async e => {
     const f = e.target.files[0]; if (!f) return;
-    const fd = new FormData(); fd.append('file', f);
-    W.media = { ...(await api('/api/media', { body: fd })), localUrl: URL.createObjectURL(f) };
+    W.media = { ...(await uploadFile(f)), localUrl: URL.createObjectURL(f) };
     renderTemplateArea();
   }));
   updatePreview();
@@ -679,9 +694,9 @@ async function pageLists(el) {
       : `<div class="card empty"><div class="big">📋</div><h2>Nenhuma lista ainda</h2><p>Suba um Excel ou CSV com os telefones dos seus clientes.</p></div>`}`;
   $$('[data-id]').forEach(r => r.onclick = () => location.hash = '#/listas/' + r.dataset.id);
   $('#up').onchange = safe(async e => {
-    const fd = new FormData(); fd.append('file', e.target.files[0]);
     toast('Lendo a planilha…');
-    const l = await api('/api/lists/import', { body: fd });
+    const up = await uploadFile(e.target.files[0], { temp: true });
+    const l = await api('/api/lists/import', { body: { file: up.file } });
     location.hash = '#/listas/' + l.id;
   });
 }
@@ -716,6 +731,8 @@ async function pageConnections(el) {
       <div class="small muted">${CONN_TYPE[c.type][1]}${c.phone_fmt ? ' · ' + esc(c.phone_fmt) : ''}${c.meta?.verified_name ? ' · ' + esc(c.meta.verified_name) : ''}</div>
       ${c.meta?.quality_rating ? `<div class="small">Qualidade do número na Meta: <b>${esc(c.meta.quality_rating)}</b></div>` : ''}
       ${c.last_error ? `<div class="alert err small">${esc(c.last_error)}</div>` : ''}
+      ${c.type === 'qr' ? (c.engine_online ? '<div class="small">💻 Mantida pelo app do PC <span class="badge ok plain">ligado</span></div>'
+        : `<div class="alert warn small"><span>💻</span><div>O QR Code funciona pelo <b>app Domma Connect Lead no computador</b>. ${c.engine_linked ? 'Abra o app no PC onde este número foi conectado.' : 'Abra o app para conectar.'} <a href="#/app">Baixar o app</a></div></div>`) : ''}
       <div class="row">
         ${c.type === 'qr' && c.status !== 'conectado' ? `<button class="btn sm primary" data-qr="${c.id}">📷 Ler QR Code</button>` : ''}
         ${c.type === 'oficial' ? `<button class="btn sm" data-edit="${c.id}">Editar dados</button><button class="btn sm" data-test="${c.id}">Testar</button>` : ''}
@@ -752,6 +769,7 @@ function qrModal(id) {
   const t = setInterval(safe(async () => {
     const r = await api(`/api/connections/${id}/qr`);
     if (r.status === 'conectado') { clearInterval(t); m.close(); toast(`WhatsApp conectado! ${r.phone_fmt || ''}`); return; }
+    if (!r.engine_online && !r.qr) { $('#qr', m).innerHTML = '<div style="font-size:54px">💻</div>'; $('#qrst', m).innerHTML = 'Para ler o QR Code, abra o <b>app Domma Connect Lead</b> no computador e entre com a sua conta. <a href="#/app">Baixar o app para Windows</a>'; return; }
     if (r.qr) { $('#qr', m).innerHTML = `<img src="${r.qr}" alt="QR Code">`; $('#qrst', m).textContent = 'O código se renova sozinho. Mantenha esta janela aberta.'; }
     if (r.last_error && r.status === 'erro') $('#qrst', m).textContent = r.last_error;
   }), 2000);
@@ -774,6 +792,27 @@ function oficialForm(conn) {
     m.close();
     toast(c.status === 'conectado' ? 'API Oficial conectada ✅' : 'Salvo, mas a Meta recusou: ' + (c.last_error || 'verifique os dados'), c.status !== 'conectado');
   });
+}
+
+// ---------------------------------------------------------------- app para PC (área privada)
+async function pageDesktop(el) {
+  el.innerHTML = `<div class="top"><div><h1>App para PC</h1><p class="muted">O motor de envio do Domma Connect Lead para Windows</p></div></div><div id="dk"><div class="spin"></div></div>`;
+  every(async () => {
+    const s = await api('/api/engine/status');
+    $('#dk').innerHTML = `<div class="grid g2">
+      <div class="card stack"><div class="row" style="gap:14px"><img src="/brand/simbolo.png" style="height:52px" alt=""><div><h2 style="margin:0">Domma Connect Lead para Windows</h2><div class="small muted">Versão ${esc(s.version)} · Windows 10 ou 11 (64 bits)</div></div></div>
+        <p>O app mantém o seu <b>WhatsApp por QR Code</b> conectado e faz os disparos das campanhas direto do seu computador. Ele abre este mesmo painel, então tudo fica num lugar só.</p>
+        ${IN_DESKTOP ? '<div class="alert ok">✅ Você já está usando o app. Pode minimizar: ele continua enviando na bandeja do Windows (perto do relógio).</div>'
+          : `<a class="btn primary big" href="${esc(s.download_url)}" style="text-align:center">⬇ Baixar instalador (.exe)</a>`}
+        <ol class="small" style="line-height:1.9;padding-left:18px;margin:0"><li>Baixe e abra o instalador. Se o Windows avisar, clique em <b>Mais informações → Executar assim mesmo</b>.</li>
+          <li>Entre com o mesmo e-mail e senha deste painel.</li><li>Em <b>Conexões</b>, leia o QR Code com o celular.</li>
+          <li>Deixe o app aberto (ou minimizado) enquanto as campanhas por QR Code estiverem rodando.</li></ol></div>
+      <div class="card stack"><h2 style="margin:0">Computadores conectados</h2>
+        ${s.engines.length ? s.engines.map(e => `<div class="row between" style="padding:8px 0;border-bottom:1px solid #f0eef6"><span>💻 <b>${esc(e.name || 'Computador')}</b> <span class="tiny muted">v${esc(e.version || '?')}</span></span>
+          ${e.online ? '<span class="badge ok">ligado agora</span>' : `<span class="badge plain">visto ${fmtDate(new Date(e.last_seen).toISOString())}</span>`}</div>`).join('')
+          : '<p class="muted">Nenhum computador ainda. Instale o app e entre com a sua conta.</p>'}
+        <div class="alert info small">API Oficial e conexão de teste também enviam com este painel aberto no navegador. O QR Code precisa do app aberto no PC onde o número foi conectado.</div></div></div>`;
+  }, 5000);
 }
 
 // ---------------------------------------------------------------- descadastrados
@@ -822,7 +861,7 @@ async function pageAdmin(el, _alias, tab = 'perfil') {
       ${field('descricao', 'Sobre a empresa', p.descricao, { area: true, rows: 140, hint: 'Conte em poucas linhas quem vocês são. A IA usa isso para escrever as mensagens.', ph: 'Ex.: Somos a Master Laudo, rede com mais de 100 lojas de vistoria em MG…' })}
       <div><button class="btn primary">Salvar perfil</button></div></form>`;
     $('#f').onsubmit = e => { e.preventDefault(); save('perfil', formData(e.target)); };
-    $('#logo').onchange = safe(async e => { const fd = new FormData(); fd.append('file', e.target.files[0]); await api('/api/admin/logo', { body: fd }); toast('Logo atualizada'); me = null; router(); });
+    $('#logo').onchange = safe(async e => { const up = await uploadFile(e.target.files[0]); await api('/api/admin/logo', { body: { file: up.file } }); toast('Logo atualizada'); me = null; router(); });
   }
 
   if (tab === 'playbook') {
@@ -932,7 +971,7 @@ async function pageAdmin(el, _alias, tab = 'perfil') {
       ${g.length ? `<div class="grid g4">${g.map(x => `<div class="card flat" style="padding:10px">${x.mime.startsWith('image/') ? `<img src="/media/${esc(x.file)}" style="width:100%;height:130px;object-fit:cover;border-radius:10px">` : `<div style="height:130px;display:grid;place-items:center;font-size:44px;background:var(--roxo-bg);border-radius:10px">${x.mime.startsWith('video/') ? '🎬' : x.mime.startsWith('audio/') ? '🎵' : '📄'}</div>`}
         <div class="row between" style="margin-top:8px"><div class="small" style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px" title="${esc(x.name)}">${esc(x.titulo)}</div><button class="btn sm ghost danger" data-del="${esc(x.file)}">✕</button></div></div>`).join('')}</div>`
         : '<div class="empty"><div class="big">🖼️</div>Nenhum arquivo ainda. Envie a logo, fotos da loja ou um folder de serviços.</div>'}</div>`;
-    $('#up [name=file]').onchange = safe(async e => { const fd = new FormData($('#up')); toast('Enviando…'); await api('/api/admin/galeria', { body: fd }); pageAdmin(el, null, 'galeria'); });
+    $('#up [name=file]').onchange = safe(async e => { toast('Enviando…'); const up = await uploadFile(e.target.files[0]); await api('/api/admin/galeria', { body: { file: up.file, titulo: $('#up [name=titulo]').value } }); pageAdmin(el, null, 'galeria'); });
     $$('[data-del]').forEach(b => b.onclick = safe(async () => { if (!confirm('Remover da galeria?')) return; await api('/api/admin/galeria/' + b.dataset.del, { method: 'DELETE' }); pageAdmin(el, null, 'galeria'); }));
   }
 

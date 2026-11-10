@@ -1,0 +1,29 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "buildCommand": "echo 'sem build'",
+  "outputDirectory": "public",
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60,
+      "includeFiles": "server/schema.sql"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/media/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/webhook/(.*)",
+      "destination": "/api/index.js"
+    }
+  ],
+  "regions": [
+    "gru1"
+  ]
+}
