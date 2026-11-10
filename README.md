@@ -24,7 +24,7 @@ SaaS da Domma Tecnologia para disparar mensagens de WhatsApp a partir de planilh
 
 | Parte | Onde |
 |---|---|
-| Site e painel (`public/`) + API (`api/index.js` → `server/app.js`) | **Vercel**, projeto `domma-connect-lead` (região São Paulo) |
+| Site e painel (`public/`) + API (`api/index.js` → `server/app.js`) | **Vercel**, projeto `domma-connect-lead` (região São Paulo), em https://connectlead.dommasistemas.com.br (CNAME na Hostgator) |
 | Banco de dados e arquivos (mídias, logos, planilhas) | **Supabase**, projeto `domma-connect-lead`, schema `connect_lead`, usuário `connect_lead_app` |
 | Motor de envio do QR Code | **App para Windows** (`desktop/`), instalado no PC do cliente |
 
@@ -97,7 +97,7 @@ public/             painel (HTML, CSS e JS, sem etapa de build)
 ## Próximos passos sugeridos
 
 - Teste real com QR Code pelo app do PC e com a API Oficial (webhook apontando para a Vercel)
-- Domínio próprio (ex.: connect.domma.com.br) e assinatura digital do instalador
+- Assinatura digital do instalador
 - Planos e cobrança (Asaas, Mercado Pago, Stripe) e limites por plano
 - Vários usuários por empresa (vendedores) com permissões
 - Integração com o Domma CRM e o Domma Chat por API ou webhook
