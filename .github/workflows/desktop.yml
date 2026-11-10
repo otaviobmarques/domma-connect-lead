@@ -1,0 +1,33 @@
+# Gera o instalador do app para Windows e publica em Releases (link usado na Área Privada → App para PC).
+# Para lançar uma versão nova: suba a versão em desktop/package.json e crie a tag desktop-vX.Y.Z,
+# ou rode manualmente em Actions → "App para Windows" → Run workflow.
+name: App para Windows
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar dependências
+        working-directory: desktop
+        run: npm ci
+      - name: Gerar instalador
+        working-directory: desktop
+        run: npm run dist:win
+      - name: Publicar no Releases
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./desktop/package.json').version")
+          TAG="desktop-v$V"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Domma Connect Lead para Windows $V" --notes "Instalador do app para PC (motor de envio por QR Code)." --target "$GITHUB_SHA"
+          gh release upload "$TAG" desktop/dist/DommaConnectLead-Setup.exe --clobber
