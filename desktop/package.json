@@ -1,0 +1,60 @@
+{
+  "name": "domma-connect-lead-desktop",
+  "productName": "Domma Connect Lead",
+  "version": "1.0.0",
+  "description": "Domma Connect Lead para Windows — motor de envio do WhatsApp por QR Code",
+  "author": "Domma Tecnologia",
+  "main": "main.js",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "prepare-engine": "node scripts/copy-engine.js",
+    "start": "npm run prepare-engine && electron .",
+    "dist:win": "npm run prepare-engine && electron-builder --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "pino": "^10.4.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "electron": "39.8.10",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "br.com.domma.connectlead",
+    "productName": "Domma Connect Lead",
+    "artifactName": "DommaConnectLead-Setup.exe",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "config.json",
+      "offline.html",
+      "engine/**",
+      "build/icon.png",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Domma Connect Lead",
+      "runAfterFinish": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/otaviobmarques/domma-connect-lead"
+  }
+}

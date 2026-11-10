@@ -1,3 +1,6 @@
 node_modules/
 data/
 .env
+desktop/dist/
+desktop/node_modules/
+desktop/engine/

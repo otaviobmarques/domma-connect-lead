@@ -14,61 +14,90 @@ SaaS da Domma Tecnologia para disparar mensagens de WhatsApp a partir de planilh
   - Modelos prontos para o setor automotivo e para negócios em geral
   - Templates aprovados na API Oficial, com cada variável ligada a uma coluna da planilha
   - **✨ IA que personaliza cada mensagem** usando os dados do contato e o playbook de vendas. Se a IA falhar, vai a mensagem base.
+- **App para PC (Windows):** motor de envio que mantém o WhatsApp por QR Code e dispara as campanhas; download na área logada (**App para PC**)
 - **Fila de envio:** velocidades Segura, Normal e Rápida, ou intervalo **personalizado** (mínimo, máximo e pausa a cada N mensagens); horário e dias permitidos; limite diário por número; "digitando…" simulado; agendamento; pausar, retomar e cancelar; nova tentativa para falhas
 - **Descadastro:** quem responde SAIR, PARAR ou algo parecido nunca mais recebe
 - **Relatórios:** enviadas, entregues, lidas, respostas e erros, com exportação para Excel
 - **Administrador:** perfil da empresa com logo, playbook de vendas, IAs (Claude, ChatGPT e Gemini, com principal e reserva), tempo de disparo, digitação, galeria e webhook
 
+## Como está no ar
+
+| Parte | Onde |
+|---|---|
+| Site e painel (`public/`) + API (`api/index.js` → `server/app.js`) | **Vercel**, projeto `domma-connect-lead` (região São Paulo) |
+| Banco de dados e arquivos (mídias, logos, planilhas) | **Supabase**, projeto `domma-connect-lead`, schema `connect_lead`, usuário `connect_lead_app` |
+| Motor de envio do QR Code | **App para Windows** (`desktop/`), instalado no PC do cliente |
+
+A Vercel só roda funções curtas, então não dá para manter o WhatsApp Web conectado nem uma fila rodando sem parar lá. Por isso:
+
+- A fila anda em **ciclos** (`server/dispatch.js`). Cada ciclo é pedido pelo app do PC (a cada 2 s) ou pelo painel aberto no navegador (a cada 4 s).
+- **API Oficial e conexão de teste:** o próprio servidor envia dentro do ciclo. Funciona com o painel ou o app aberto.
+- **QR Code:** o servidor monta a mensagem (variáveis, IA, descadastro, horário, limite) e entrega ao app do PC, que envia pelo Baileys e devolve o resultado. O número fica ligado ao computador onde o QR foi lido.
+- Arquivos ficam no banco em pedaços de 3 MB, porque a Vercel limita cada requisição a 4,5 MB.
+
 ## Rodar localmente
 
 ```bash
 npm install
-npm start          # http://localhost:3000
+DATABASE_URL=postgresql://usuario:senha@localhost:5432/banco npm start   # http://localhost:3000 (cria as tabelas)
 ```
 
-Crie uma conta e, em **Conexões**, adicione uma "Conexão de teste" para experimentar sem enviar nada de verdade.
+Para testar o QR Code localmente, rode também o motor de envio:
 
-## Variáveis de ambiente
+```bash
+ENGINE_URL=http://localhost:3000 ENGINE_EMAIL=voce@empresa.com ENGINE_PASSWORD=suasenha npm run engine
+```
+
+## Variáveis de ambiente (Vercel)
 
 | Variável | Para quê |
 |---|---|
-| `PORT` | Porta HTTP (padrão 3000) |
-| `DATA_DIR` | Pasta do banco SQLite, dos uploads e das sessões do QR Code (padrão `./data`). **Em produção, use um volume persistente.** |
-| `APP_URL` | URL pública, usada para montar a URL do webhook |
-| `JWT_SECRET` | Segredo das sessões (se não for definido, é gerado e salvo em `DATA_DIR`) |
-| `ENCRYPTION_KEY` | Chave para criptografar as chaves de IA (se não for definida, é gerada e salva em `DATA_DIR`) |
-| `META_VERIFY_TOKEN` | Token de verificação global do webhook (opcional; cada empresa também tem o seu) |
-| `META_APP_SECRET` | Valida a assinatura dos webhooks da Meta (recomendado) |
+| `DATABASE_URL` | Conexão do Postgres. No Supabase, use o pooler de transações (porta 6543) com o usuário `connect_lead_app.<ref-do-projeto>` |
+| `NODE_ENV=production` | Cookies seguros (HTTPS) |
+| `APP_URL` | URL pública, usada para montar a URL do webhook (opcional) |
+| `JWT_SECRET` / `ENCRYPTION_KEY` | Opcionais. Se faltarem, são gerados na primeira execução e guardados na tabela `app_secrets` |
+| `META_VERIFY_TOKEN` / `META_APP_SECRET` | Webhook da API Oficial (o segredo valida a assinatura; recomendado) |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` | Chaves de IA padrão para todas as empresas (opcional) |
-| `NODE_ENV=production` | Ativa cookies seguros (HTTPS) |
+| `DESKTOP_DOWNLOAD_URL` / `DESKTOP_VERSION` | Link e versão do instalador mostrados em **App para PC** |
 
-## Deploy (Railway, Render, VPS)
+Mudou o schema? Atualize `server/schema.sql` (sempre idempotente) e rode `npm run db:migrate` com o `DATABASE_URL` de produção.
 
-1. Node 20 ou mais novo. Comando de início: `npm start`.
-2. Monte um **volume persistente** e aponte `DATA_DIR` para ele (ex.: `/data`). Sem volume, as sessões do QR Code, o banco e os uploads se perdem a cada deploy.
-3. Rode **um único processo**, porque a fila e as sessões do QR Code ficam em memória.
-4. API Oficial: configure o webhook na Meta com a URL e o token que aparecem em **Administrador → Webhook**.
+## App para Windows
+
+O código fica em `desktop/` (Electron). Ele abre o painel da Vercel numa janela e roda `engine/engine.js` em segundo plano, com ícone na bandeja perto do relógio.
+
+- Gerar o instalador: GitHub → **Actions → App para Windows → Run workflow**, ou crie a tag `desktop-vX.Y.Z`. O `.exe` vai para **Releases**, e o painel aponta para `releases/latest/download/DommaConnectLead-Setup.exe`.
+- O instalador não é assinado digitalmente, então o Windows pode mostrar o aviso do SmartScreen ("Mais informações → Executar assim mesmo").
+- Endereço do painel usado pelo app: `desktop/config.json`.
 
 ## Estrutura
 
 ```
+api/index.js        entrada da Vercel
 server/
-  index.js        rotas da API
-  db.js           schema SQLite
-  queue.js        fila de envio (velocidade, pausas, horário, limite diário)
-  ai.js           IA (Claude/OpenAI/Gemini, com reserva)
-  settings.js     configurações do administrador + contexto do negócio para a IA
-  spreadsheet.js  leitura de planilha e detecção de colunas
-  phone.js        normalização de telefones
-  render.js       variáveis e spintax
-  connections.js  gerenciador de conexões e webhooks
-  drivers/        oficial.js, qrcode.js, simulado.js
-public/           painel (HTML, CSS e JS, sem etapa de build)
+  app.js            rotas da API, webhook da Meta e /api/engine/* (app do PC)
+  index.js          servidor local (npm start)
+  db.js             Postgres (pg); use ? nos SQLs
+  schema.sql        tabelas (idempotente)
+  dispatch.js       fila em ciclos: velocidade, pausas, horário, limite diário, IA, descadastro
+  files.js          arquivos em pedaços no banco
+  secrets.js        segredos de sessão e criptografia
+  ai.js             IA (Claude/OpenAI/Gemini, com reserva)
+  settings.js       configurações do administrador + contexto do negócio para a IA
+  spreadsheet.js    leitura de planilha e detecção de colunas
+  phone.js          normalização de telefones
+  render.js         variáveis e spintax
+  connections.js    conexões sem estado e webhook da Meta
+  drivers/          oficial.js, simulado.js (rodam no servidor)
+engine/             motor de envio: engine.js (ciclos e envios) e qr-driver.js (Baileys)
+desktop/            app Electron para Windows
+public/             painel (HTML, CSS e JS, sem etapa de build)
 ```
 
 ## Próximos passos sugeridos
 
+- Teste real com QR Code pelo app do PC e com a API Oficial (webhook apontando para a Vercel)
+- Domínio próprio (ex.: connect.domma.com.br) e assinatura digital do instalador
 - Planos e cobrança (Asaas, Mercado Pago, Stripe) e limites por plano
 - Vários usuários por empresa (vendedores) com permissões
 - Integração com o Domma CRM e o Domma Chat por API ou webhook
-- Trocar SQLite por Postgres e a fila por Redis/BullMQ quando o volume crescer

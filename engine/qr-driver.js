@@ -4,17 +4,16 @@ import path from 'node:path';
 import QRCode from 'qrcode';
 import pino from 'pino';
 import { makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
-import { DATA_DIR } from '../db.js';
 
 const logger = pino({ level: process.env.BAILEYS_LOG || 'silent' });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const phoneFromJid = jid => (jid && jid.endsWith('@s.whatsapp.net')) ? jid.split('@')[0].split(':')[0] : null;
 
 export class QrDriver {
-  constructor(conn, hooks) {
+  constructor(conn, hooks, dataDir) {
     this.conn = conn; this.hooks = hooks;
-    this.status = 'desconectado'; this.qr = null; this.sock = null; this.stopped = false;
-    this.authDir = path.join(DATA_DIR, 'auth', `conn-${conn.id}`);
+    this.status = 'desconectado'; this.qr = null; this.sock = null; this.stopped = false; this.phone = null; this.error = null;
+    this.authDir = path.join(dataDir, 'auth', `conn-${conn.id}`);
   }
 
   async start() {
@@ -36,7 +35,8 @@ export class QrDriver {
         this.hooks.onState(this.conn.id, { status: 'aguardando_qr' });
       }
       if (u.connection === 'open') {
-        this.qr = null; this.status = 'conectado';
+        this.qr = null; this.status = 'conectado'; this.error = null;
+        this.phone = phoneFromJid(sock.user?.id) || sock.user?.id?.split(':')[0];
         this.hooks.onState(this.conn.id, { status: 'conectado', phone: phoneFromJid(sock.user?.id) || sock.user?.id?.split(':')[0] });
       }
       if (u.connection === 'close') {
@@ -44,7 +44,7 @@ export class QrDriver {
         this.sock = null;
         if (code === DisconnectReason.loggedOut) {
           fs.rmSync(this.authDir, { recursive: true, force: true });
-          this.status = 'desconectado'; this.qr = null;
+          this.status = 'desconectado'; this.qr = null; this.error = 'Sessão encerrada no celular';
           this.hooks.onState(this.conn.id, { status: 'desconectado', error: 'Sessão encerrada no celular' });
           return;
         }
@@ -52,7 +52,7 @@ export class QrDriver {
           this.status = 'reconectando';
           this.hooks.onState(this.conn.id, { status: 'reconectando' });
           await sleep(code === DisconnectReason.restartRequired ? 500 : 4000);
-          if (!this.stopped) this.start().catch(e => this.hooks.onState(this.conn.id, { status: 'erro', error: e.message }));
+          if (!this.stopped) this.start().catch(e => { this.status = 'erro'; this.error = e.message; this.hooks.onState(this.conn.id, { status: 'erro', error: e.message }); });
         }
       }
     });
@@ -99,7 +99,7 @@ export class QrDriver {
     }
     let content;
     if (media) {
-      const buf = fs.readFileSync(media.path);
+      const buf = await media.load();
       if (media.kind === 'image') content = { image: buf, caption: text || undefined };
       else if (media.kind === 'video') content = { video: buf, caption: text || undefined };
       else if (media.kind === 'audio') content = { audio: buf, mimetype: media.mime, ptt: true };

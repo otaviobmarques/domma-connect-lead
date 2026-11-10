@@ -1,21 +1,13 @@
 // IA que personaliza cada mensagem (Claude, ChatGPT ou Gemini)
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
-import { DATA_DIR } from './db.js';
+import { SECRETS } from './secrets.js';
 import { businessContext } from './settings.js';
 
 // ---- chave de API guardada criptografada
-const keyFile = path.join(DATA_DIR, '.enc-key');
-const ENC_KEY = process.env.ENCRYPTION_KEY
-  ? crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY).digest()
-  : (fs.existsSync(keyFile) ? Buffer.from(fs.readFileSync(keyFile, 'utf8'), 'hex')
-    : (() => { const k = crypto.randomBytes(32); fs.writeFileSync(keyFile, k.toString('hex')); return k; })());
-
 export function encrypt(text) {
   if (!text) return null;
   const iv = crypto.randomBytes(12);
-  const c = crypto.createCipheriv('aes-256-gcm', ENC_KEY, iv);
+  const c = crypto.createCipheriv('aes-256-gcm', SECRETS.enc, iv);
   const enc = Buffer.concat([c.update(text, 'utf8'), c.final()]);
   return [iv, c.getAuthTag(), enc].map(b => b.toString('base64')).join('.');
 }
@@ -23,7 +15,7 @@ export function decrypt(blob) {
   if (!blob) return null;
   try {
     const [iv, tag, enc] = blob.split('.').map(s => Buffer.from(s, 'base64'));
-    const d = crypto.createDecipheriv('aes-256-gcm', ENC_KEY, iv);
+    const d = crypto.createDecipheriv('aes-256-gcm', SECRETS.enc, iv);
     d.setAuthTag(tag);
     return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
   } catch { return null; }

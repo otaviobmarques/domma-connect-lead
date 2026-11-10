@@ -1,6 +1,4 @@
 // API Oficial do WhatsApp (Meta Cloud API)
-import fs from 'node:fs';
-
 const GRAPH = 'https://graph.facebook.com';
 
 export class OficialDriver {
@@ -8,6 +6,8 @@ export class OficialDriver {
     this.conn = conn; this.hooks = hooks; this.status = 'desconectado'; this.qr = null;
     this.cfg = conn.config || {};
     this.version = this.cfg.api_version || 'v21.0';
+    this.mediaCache = this.cfg.media_cache || {}; // fileId -> { id, at }  (ids de mídia da Meta valem 30 dias)
+    this.cacheChanged = false;
   }
 
   async api(path, opts = {}) {
@@ -26,20 +26,20 @@ export class OficialDriver {
 
   async start() {
     if (!this.cfg.phone_number_id || !this.cfg.access_token) {
-      this.hooks.onState(this.conn.id, { status: 'erro', error: 'Preencha o ID do número e o token de acesso' });
+      await this.hooks.onState(this.conn.id, { status: 'erro', error: 'Preencha o ID do número e o token de acesso' });
       return;
     }
     try {
       const info = await this.api(`${this.cfg.phone_number_id}?fields=display_phone_number,verified_name,quality_rating`);
       this.status = 'conectado';
-      this.hooks.onState(this.conn.id, {
+      await this.hooks.onState(this.conn.id, {
         status: 'conectado',
         phone: String(info.display_phone_number || '').replace(/\D/g, ''),
         meta: { verified_name: info.verified_name, quality_rating: info.quality_rating },
       });
     } catch (e) {
       this.status = 'erro';
-      this.hooks.onState(this.conn.id, { status: 'erro', error: e.message });
+      await this.hooks.onState(this.conn.id, { status: 'erro', error: e.message });
     }
   }
   async stop() {}
@@ -61,9 +61,17 @@ export class OficialDriver {
     const fd = new FormData();
     fd.append('messaging_product', 'whatsapp');
     fd.append('type', media.mime);
-    fd.append('file', new Blob([fs.readFileSync(media.path)], { type: media.mime }), media.name);
+    fd.append('file', new Blob([await media.load()], { type: media.mime }), media.name);
     const j = await this.api(`${this.cfg.phone_number_id}/media`, { method: 'POST', body: fd });
     return j.id;
+  }
+  async mediaId(media) {
+    const c = this.mediaCache[media.fileId];
+    if (c && Date.now() - c.at < 20 * 864e5) return c.id;
+    const id = await this.uploadMedia(media);
+    this.mediaCache[media.fileId] = { id, at: Date.now() };
+    this.cacheChanged = true;
+    return id;
   }
 
   async send({ phone, text, media, template }) {
@@ -73,17 +81,15 @@ export class OficialDriver {
       if (template.header) {
         const h = template.header;
         if (h.type === 'text') components.push({ type: 'header', parameters: [{ type: 'text', text: h.value }] });
-        else if (h.mediaPath) {
-          if (!this._mediaCache) this._mediaCache = {};
-          const id = this._mediaCache[h.mediaPath] ||= await this.uploadMedia({ path: h.mediaPath, mime: h.mime, name: h.name });
+        else if (h.media) {
+          const id = await this.mediaId(h.media);
           components.push({ type: 'header', parameters: [{ type: h.type, [h.type]: { id, ...(h.type === 'document' ? { filename: h.name } : {}) } }] });
         }
       }
       if (template.body?.length) components.push({ type: 'body', parameters: template.body.map(v => ({ type: 'text', text: String(v || '-') })) });
       body = { messaging_product: 'whatsapp', to: phone, type: 'template', template: { name: template.name, language: { code: template.lang }, components } };
     } else if (media) {
-      if (!this._mediaCache) this._mediaCache = {};
-      const id = this._mediaCache[media.path] ||= await this.uploadMedia(media);
+      const id = await this.mediaId(media);
       const t = media.kind; // image | video | document | audio
       body = { messaging_product: 'whatsapp', to: phone, type: t, [t]: { id, ...(t !== 'audio' && text ? { caption: text } : {}), ...(t === 'document' ? { filename: media.name } : {}) } };
     } else {
@@ -101,14 +107,14 @@ export class OficialDriver {
   }
 
   // Chamado pelo webhook
-  handleWebhookValue(value) {
+  async handleWebhookValue(value) {
     for (const s of value.statuses || []) {
       const map = { sent: 'enviado', delivered: 'entregue', read: 'lido', failed: 'falhou' };
-      this.hooks.onStatus(s.id, map[s.status] || s.status, s.errors?.[0]?.title);
+      await this.hooks.onStatus(s.id, map[s.status] || s.status, s.errors?.[0]?.title);
     }
     for (const m of value.messages || []) {
       const text = m.text?.body || m.button?.text || m.interactive?.button_reply?.title || '';
-      this.hooks.onIncoming(this.conn.id, m.from, text);
+      await this.hooks.onIncoming(this.conn.id, m.from, text);
     }
   }
 }
