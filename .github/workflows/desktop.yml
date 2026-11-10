@@ -1,10 +1,11 @@
 # Gera o instalador do app para Windows e publica em Releases (link usado na Área Privada → App para PC).
-# Para lançar uma versão nova: suba a versão em desktop/package.json e crie a tag desktop-vX.Y.Z,
-# ou rode manualmente em Actions → "App para Windows" → Run workflow.
+# Roda sozinho quando o app ou o motor mudam (ou manualmente em Actions → "App para Windows" → Run workflow).
+# Para lançar uma versão nova, suba a versão em desktop/package.json: o Release desktop-vX.Y.Z é criado/atualizado.
 name: App para Windows
 on:
   push:
-    tags: ['desktop-v*']
+    branches: [main, claude/vercel-supabase-desktop]
+    paths: ['desktop/**', 'engine/**', '.github/workflows/desktop.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -29,5 +30,5 @@ jobs:
         run: |
           V=$(node -p "require('./desktop/package.json').version")
           TAG="desktop-v$V"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "Domma Connect Lead para Windows $V" --notes "Instalador do app para PC (motor de envio por QR Code)." --target "$GITHUB_SHA"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --latest --title "Domma Connect Lead para Windows $V" --notes "Instalador do app para PC (motor de envio por QR Code)." --target "$GITHUB_SHA"
           gh release upload "$TAG" desktop/dist/DommaConnectLead-Setup.exe --clobber
