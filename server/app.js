@@ -15,12 +15,11 @@ import { tick, reportResult, prepareCampaign, estimateSeconds, contactVars, SPEE
 import { personalize, testAI, encrypt, hasAI, PROVIDERS } from './ai.js';
 import { getSettings, saveSettings, DEFAULT_SETTINGS } from './settings.js';
 import { createFile, putChunk, completeFile, fileInfo, readFile, readChunk, deleteFile, CHUNK } from './files.js';
-import { localSecret } from './secrets.js';
+import { SECRETS, loadSecrets } from './secrets.js';
 import { MODELOS } from './modelos.js';
 import { hooks } from './connections.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const JWT_SECRET = process.env.JWT_SECRET || localSecret('.jwt-secret', 48);
 // link do instalador do app para Windows (Área Privada → App para PC)
 export const DESKTOP_DOWNLOAD_URL = process.env.DESKTOP_DOWNLOAD_URL || 'https://github.com/otaviobmarques/domma-connect-lead/releases/latest/download/DommaConnectLead-Setup.exe';
 export const DESKTOP_VERSION = process.env.DESKTOP_VERSION || '1.0.0';
@@ -29,6 +28,7 @@ export const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '3mb', verify: (req, _res, buf) => { req.rawBody = buf; } }));
 app.use(cookieParser());
+app.use((req, res, next) => (/^\/(api|media|webhook)\//.test(req.path) ? loadSecrets().then(() => next(), next) : next()));
 
 // ---------- helpers
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -38,13 +38,13 @@ const fail = (status, msg) => { throw new HttpError(status, msg); };
 const auth = wrap(async (req, res, next) => {
   const token = req.cookies.cl_token || (req.headers.authorization || '').replace(/^Bearer /, '');
   let p;
-  try { p = jwt.verify(token, JWT_SECRET); } catch { return res.status(401).json({ error: 'Faça login novamente' }); }
+  try { p = jwt.verify(token, SECRETS.jwt); } catch { return res.status(401).json({ error: 'Faça login novamente' }); }
   req.user = await db.get('SELECT id, name, email, workspace_id, role FROM users WHERE id=?', [p.uid]);
   if (!req.user) return res.status(401).json({ error: 'Faça login novamente' });
   req.ws = req.user.workspace_id;
   next();
 });
-const signToken = uid => jwt.sign({ uid }, JWT_SECRET, { expiresIn: '30d' });
+const signToken = uid => jwt.sign({ uid }, SECRETS.jwt, { expiresIn: '30d' });
 function setSession(res, uid) {
   res.cookie('cl_token', signToken(uid), { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 30 * 864e5 });
 }

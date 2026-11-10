@@ -1,15 +1,20 @@
-// Segredos para rodar localmente sem configurar nada. Em produção (Vercel), use as variáveis de ambiente.
+// Segredos do servidor (sessões e criptografia das chaves de IA).
+// Ordem: variável de ambiente → tabela app_secrets no banco (gerado na primeira execução).
 import crypto from 'node:crypto';
-import fs from 'node:fs';
-import path from 'node:path';
+import { db } from './db.js';
 
-export function localSecret(name, bytes) {
-  if (process.env.VERCEL) throw new Error(`Configure a variável de ambiente para ${name} na Vercel`);
-  const dir = process.env.DATA_DIR || path.resolve('data');
-  fs.mkdirSync(dir, { recursive: true });
-  const f = path.join(dir, name);
-  if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8').trim();
-  const s = crypto.randomBytes(bytes).toString('hex');
-  fs.writeFileSync(f, s);
-  return s;
+export const SECRETS = { jwt: null, enc: null };
+let loading = null;
+
+async function fromDb(name, bytes) {
+  await db.run('CREATE TABLE IF NOT EXISTS app_secrets (name TEXT PRIMARY KEY, value TEXT NOT NULL)');
+  await db.run('INSERT INTO app_secrets (name, value) VALUES (?, ?) ON CONFLICT (name) DO NOTHING', [name, crypto.randomBytes(bytes).toString('hex')]);
+  return (await db.get('SELECT value FROM app_secrets WHERE name=?', [name])).value;
+}
+
+export function loadSecrets() {
+  return loading ||= (async () => {
+    SECRETS.jwt = process.env.JWT_SECRET || await fromDb('jwt', 48);
+    SECRETS.enc = crypto.createHash('sha256').update(process.env.ENCRYPTION_KEY || await fromDb('enc', 32)).digest();
+  })().catch(e => { loading = null; throw e; });
 }
