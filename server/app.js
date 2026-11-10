@@ -88,8 +88,8 @@ app.post('/api/auth/register', wrap(async (req, res) => {
 }));
 app.post('/api/auth/login', wrap(async (req, res) => {
   const { email, password } = req.body || {};
-  const u = await db.get('SELECT * FROM users WHERE email=?', [String(email || '').toLowerCase()]);
-  if (!u || !(await bcrypt.compare(password || '', u.password_hash))) fail(401, 'E-mail ou senha incorretos');
+  const u = await db.get('SELECT * FROM users WHERE email=?', [String(email || '').trim().toLowerCase()]);
+  if (!u || !(await bcrypt.compare(password || '', u.password_hash))) fail(401, 'Usuário ou senha incorretos');
   setSession(res, u.id);
   res.json({ ok: true });
 }));
@@ -534,8 +534,8 @@ app.get('/api/engine/status', auth, wrap(async (req, res) => res.json(await engi
 // login do app do PC (devolve token para o cabeçalho Authorization)
 app.post('/api/engine/login', wrap(async (req, res) => {
   const { email, password } = req.body || {};
-  const u = await db.get('SELECT * FROM users WHERE email=?', [String(email || '').toLowerCase()]);
-  if (!u || !(await bcrypt.compare(password || '', u.password_hash))) fail(401, 'E-mail ou senha incorretos');
+  const u = await db.get('SELECT * FROM users WHERE email=?', [String(email || '').trim().toLowerCase()]);
+  if (!u || !(await bcrypt.compare(password || '', u.password_hash))) fail(401, 'Usuário ou senha incorretos');
   res.json({ token: signToken(u.id), user: { name: u.name, email: u.email } });
 }));
 app.post('/api/engine/tick', auth, wrap(async (req, res) => {

@@ -169,7 +169,7 @@ function authHero() {
 function pageLogin() {
   root.innerHTML = `<div class="auth">${authHero()}<div class="form"><form class="card stack" id="f">
     <h2>Entrar</h2>
-    <label class="f">E-mail<input name="email" type="email" required autocomplete="email"></label>
+    <label class="f">E-mail ou usuário<input name="email" type="text" required autocomplete="username" autocapitalize="none"></label>
     <label class="f">Senha<input name="password" type="password" required autocomplete="current-password"></label>
     <button class="btn primary big">Entrar</button>
     <p class="small muted" style="text-align:center">Ainda não tem conta? <a href="#/cadastro">Criar conta grátis</a></p></form></div></div>`;
