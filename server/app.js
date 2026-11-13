@@ -22,7 +22,7 @@ import { hooks } from './connections.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // link do instalador do app para Windows (Área Privada → App para PC)
 export const DESKTOP_DOWNLOAD_URL = process.env.DESKTOP_DOWNLOAD_URL || 'https://github.com/otaviobmarques/domma-connect-lead/releases/latest/download/DommaConnectLead-Setup.exe';
-export const DESKTOP_VERSION = process.env.DESKTOP_VERSION || '1.0.0';
+export const DESKTOP_VERSION = process.env.DESKTOP_VERSION || '1.0.1';
 
 export const app = express();
 app.set('trust proxy', 1);

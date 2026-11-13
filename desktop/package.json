@@ -1,7 +1,7 @@
 {
   "name": "domma-connect-lead-desktop",
   "productName": "Domma Connect Lead",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Domma Connect Lead para Windows — motor de envio do WhatsApp por QR Code",
   "author": "Domma Tecnologia",
   "main": "main.js",

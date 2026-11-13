@@ -52,12 +52,12 @@ public/app.js          todas as telas (login, início, assistente, campanhas, li
 ```
 
 ## Estado atual
-No ar na Vercel (`domma-connect-lead`, time REDBOX) com banco no Supabase (`domma-connect-lead`). Testado ponta a ponta em produção com a conexão simulada: importação, anexos em pedaços, campanha, fila em ciclos, descadastro durante a campanha, entregue/lido, relatório e exportação. O motor de envio gerou o QR Code real do WhatsApp e o desconectar funcionou. **Ainda falta** ler o QR com um celular e disparar de verdade, e testar a API Oficial.
+No ar em https://connectlead.dommasistemas.com.br (Vercel, projeto `domma-connect-lead`, time REDBOX; DNS na Hostgator, CNAME `connectlead`) com banco no Supabase (`domma-connect-lead`). Testado ponta a ponta em produção com a conexão simulada: importação, anexos em pedaços, campanha, fila em ciclos, descadastro durante a campanha, entregue/lido, relatório e exportação. O motor de envio gerou o QR Code real do WhatsApp e o desconectar funcionou. **Ainda falta** ler o QR com um celular e disparar de verdade, e testar a API Oficial.
 
 ## Próximas tarefas (em ordem)
 1. **Teste real com QR Code pelo app do PC:** conectar um número, disparar para 3 ou 4 números internos e conferir "digitando…", entregue/lido e resposta SAIR.
 2. **Teste real da API Oficial:** webhook da Meta apontando para a URL da Vercel, templates, status e respostas.
-3. **Domínio próprio** e assinatura digital do instalador.
+3. **Assinatura digital do instalador.**
 4. **Planos e cobrança:** Starter, Pro, Advanced e Enterprise, com limites de números, disparos por mês e IA. Gateways Asaas, Mercado Pago e Stripe, cada um podendo ser ligado ou desligado.
 5. **Vários usuários por empresa** (dono e vendedores) com permissões. Hoje todo usuário é `owner`.
 6. **Integração com o Domma CRM e o Domma Chat** por API/webhook.
